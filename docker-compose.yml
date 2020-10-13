@@ -1,0 +1,42 @@
+version: "3.3"
+
+services:
+    reverse_proxy_traefik:
+        image: "traefik:latest"
+        restart: unless-stopped
+        command:
+          - "--api.insecure=true"
+          - "--providers.docker=true"
+          - "--providers.docker.exposedbydefault=true"
+          - "--entrypoints.web.address=:80"
+          - "--entrypoints.websecure.address=:443"
+          - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+          - "--certificatesresolvers.myresolver.acme.email=${EMAIL_FOR_LETSENCRYPT}"
+          - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - "./letsencrypt:/letsencrypt"
+          - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+    peerjs_meeting_front:
+        restart: unless-stopped
+        image: "nginx"
+        volumes:
+            - ./src:/usr/share/nginx/html
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.peerjs_meeting_front.rule=Host(`${FRONTEND_DOMAIN}`)"
+            - "traefik.http.routers.peerjs_meeting_front.entrypoints=websecure"
+            - "traefik.http.routers.peerjs_meeting_front.tls.certresolver=myresolver"
+
+    peerjs_backend_server:
+        restart: unless-stopped
+        image: "peerjs/peerjs-server"
+        command: ["--port", "9000", "--path", "/myapp", "--proxied", "true", "--allow_discovery", "true"]
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.peerjs_backend_server.rule=Host(`${BACKEND_DOMAIN}`)"
+            - "traefik.http.routers.peerjs_backend_server.entrypoints=websecure"
+            - "traefik.http.routers.peerjs_backend_server.tls.certresolver=myresolver"
